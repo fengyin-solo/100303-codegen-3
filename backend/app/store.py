@@ -4,6 +4,7 @@
 """
 from __future__ import annotations
 
+import threading
 from typing import Any
 
 from app.seed import SEED_ROWS
@@ -14,6 +15,18 @@ class Store:
         self._tables: dict[str, list[dict[str, Any]]] = {
             name: [dict(row) for row in rows] for name, rows in SEED_ROWS.items()
         }
+        self._lock = threading.RLock()
+
+    def ensure_tables(self, seeds: dict[str, list[dict[str, Any]]]) -> None:
+        """登记业务模块自带的示例数据表；已存在的表不会被覆盖。"""
+        with self._lock:
+            for name, rows in seeds.items():
+                self._tables.setdefault(name, [dict(row) for row in rows])
+
+    @property
+    def lock(self) -> threading.RLock:
+        """核销类动作需要跨表原子提交时用的锁。"""
+        return self._lock
 
     def module_names(self) -> list[str]:
         return sorted(self._tables)
@@ -30,6 +43,8 @@ class Store:
     def overview(self) -> dict[str, object]:
         modules: list[dict[str, object]] = []
         for name in self.module_names():
+            if name.startswith("_"):
+                continue  # 内部辅表，不算业务模块
             rows = self.rows(name)
             modules.append({
                 "name": name,
